@@ -21,7 +21,26 @@ describe('SearchBar', () => {
     await user.type(screen.getByRole('searchbox'), '   ');
     fireEvent.submit(screen.getByRole('search'));
 
-    expect(screen.getByRole('button', { name: 'Buscar' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Buscar' })).toBeEnabled();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'A busca deve conter de 3 a 100 caracteres.',
+    );
+    expect(screen.getByRole('searchbox')).toHaveAttribute('aria-invalid', 'true');
+    expect(onSearch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'ab',
+    'x'.repeat(101),
+  ])('informa os limites para %s sem chamar onSearch', async (value) => {
+    const user = userEvent.setup();
+    const onSearch = vi.fn();
+    render(<SearchBar onSearch={onSearch} />);
+    await user.type(screen.getByRole('searchbox'), value);
+    await user.click(screen.getByRole('button', { name: 'Buscar' }));
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'A busca deve conter de 3 a 100 caracteres.',
+    );
     expect(onSearch).not.toHaveBeenCalled();
   });
 

@@ -18,7 +18,7 @@ export default function UnitToggle({ unit, onChange }: UnitToggleProps) {
           type="button"
           aria-pressed={unit === value}
           onClick={() => onChange(value)}
-          className="min-h-11 min-w-11 rounded-lg px-3 py-2 font-semibold text-white hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-400 aria-pressed:bg-accent-400 aria-pressed:text-night-900"
+          className="min-h-11 min-w-11 rounded-lg px-3 py-2 font-semibold text-white transition-colors hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-400 aria-pressed:bg-accent-400 aria-pressed:text-night-900"
         >
           {value === 'celsius' ? '°C' : '°F'}
         </button>

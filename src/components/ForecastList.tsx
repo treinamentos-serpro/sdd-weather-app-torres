@@ -11,6 +11,16 @@ interface ForecastListProps {
 export default function ForecastList({ days, unit }: ForecastListProps) {
   const titleId = useId();
   const visibleDays = [...days].sort((a, b) => a.date.localeCompare(b.date)).slice(0, 5);
+  const missingDays =
+    5 -
+    visibleDays.length +
+    visibleDays.filter(
+      (day) =>
+        day.condition === null &&
+        day.temperatureMinC === null &&
+        day.temperatureMaxC === null &&
+        day.precipitationProbabilityMaxPercent === null,
+    ).length;
 
   return (
     <section aria-labelledby={titleId}>
@@ -21,9 +31,9 @@ export default function ForecastList({ days, unit }: ForecastListProps) {
         <EmptyState title="Sem previsão disponível" hint="Tente consultar os dados novamente." />
       ) : (
         <>
-          {visibleDays.length < 5 && (
+          {missingDays > 0 && (
             <p className="mb-4 text-slate-300">
-              Cobertura incompleta: {5 - visibleDays.length} dia(s) sem previsão disponível.
+              Cobertura incompleta: {missingDays} dia(s) sem previsão disponível.
             </p>
           )}
           <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">

@@ -59,7 +59,7 @@ Cada módulo tem **README.md**, **challenge.md**, **prompts.md** e
 
 ```bash
 pnpm install
-pnpm exec playwright install   # navegadores para os testes E2E
+pnpm exec playwright install --with-deps   # navegadores e bibliotecas para os testes E2E
 ```
 
 ### Scripts
@@ -76,9 +76,23 @@ pnpm test:coverage   # cobertura
 pnpm test:e2e        # testes E2E (Playwright)
 ```
 
+Os testes E2E iniciam um servidor exclusivo em `http://localhost:5174`, com
+porta estrita e sem reutilizar servidores existentes. Mantenha essa porta livre;
+o servidor de desenvolvimento pode continuar usando a porta padrão `5173`.
+
 ---
 
 ## Arquitetura do app
+
+O fluxo é **buscar → selecionar a cidade → consultar clima e previsão**.
+A lista mantém a ordem da Open-Meteo (até dez cidades) e distingue homônimos
+com coordenadas. “Atualizar” consulta novamente somente a cidade selecionada;
+não há atualização automática. A unidade é a única preferência persistida
+(`weather-unit` no `localStorage`); cidade e resultados não são armazenados.
+O app mostra horário da consulta e da observação no fuso da cidade e identifica
+observações com mais de duas horas como desatualizadas. Datas sem previsão
+em hoje + quatro dias são apresentadas com campos indisponíveis, nunca zeros
+inventados.
 
 ```text
 src/

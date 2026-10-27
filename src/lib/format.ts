@@ -1,3 +1,14 @@
+export function formatOptionalMetric(
+  value: number | null | undefined,
+  suffix: string,
+  maximumFractionDigits = 1,
+): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return 'Indisponível';
+  }
+  return `${value.toLocaleString('pt-BR', { maximumFractionDigits })} ${suffix}`;
+}
+
 export function formatDay(date: string): string {
   const parsed = new Date(`${date}T12:00:00Z`);
   if (

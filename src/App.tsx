@@ -1,17 +1,21 @@
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
+import CityResults from './components/CityResults';
 import CurrentWeather from './components/CurrentWeather';
 import ForecastList from './components/ForecastList';
+import RefreshWeather from './components/RefreshWeather';
 import SearchBar from './components/SearchBar';
 import EmptyState from './components/states/EmptyState';
 import ErrorState from './components/states/ErrorState';
 import LoadingState from './components/states/LoadingState';
 import UnitToggle from './components/UnitToggle';
 import useWeather from './hooks/useWeather';
-import type { Unit } from './types/weather';
+import useTemperatureUnit from './hooks/useTemperatureUnit';
+import type { City } from './types/weather';
 
 export default function App() {
-  const [unit, setUnit] = useState<Unit>('celsius');
-  const { status, data, error, query, search, retry } = useWeather();
+  const { unit, changeUnit, error: preferenceError } = useTemperatureUnit();
+  const { status, data, error, query, cities, selectedCity, search, selectCity, retry, refresh } =
+    useWeather();
   const resultsRef = useRef<HTMLDivElement>(null);
 
   function handleSearch(city: string) {
@@ -22,6 +26,10 @@ export default function App() {
   function handleRetry() {
     resultsRef.current?.focus();
     void retry();
+  }
+  function handleSelect(city: City) {
+    resultsRef.current?.focus();
+    void selectCity(city);
   }
 
   return (
@@ -38,9 +46,9 @@ export default function App() {
             <h1 className="text-2xl font-bold text-accent-400">Weather App</h1>
             <p className="text-sm text-slate-300">Seu clima, em um só lugar</p>
           </div>
-          <SearchBar onSearch={handleSearch} disabled={status === 'loading'} />
+          <SearchBar onSearch={handleSearch} />
           <div className="justify-self-start">
-            <UnitToggle unit={unit} onChange={setUnit} />
+            <UnitToggle unit={unit} onChange={changeUnit} />
           </div>
         </div>
       </header>
@@ -56,14 +64,21 @@ export default function App() {
         >
           {query && `Busca: ${query}. `}
           {status === 'success' && data && `Exibindo o clima de ${data.city.name}.`}
+          {status === 'choosing' && 'Selecione uma cidade nos resultados.'}
           {status === 'empty' &&
             'Nenhum resultado encontrado. Confira o nome da cidade e tente uma nova busca.'}
           {status === 'idle' && 'Digite uma cidade para consultar o clima.'}
         </div>
+        {preferenceError && (
+          <p role="alert" className="text-sm text-slate-300">
+            {preferenceError}
+          </p>
+        )}
         <div
           ref={resultsRef}
           role="region"
           aria-label="Resultados da consulta"
+          aria-busy={status === 'loading'}
           tabIndex={-1}
           className="space-y-6 rounded-2xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent-400"
         >
@@ -73,7 +88,12 @@ export default function App() {
               hint="Digite uma cidade no campo de busca para consultar a previsão."
             />
           )}
-          {status === 'loading' && <LoadingState />}
+          {status === 'loading' && (
+            <LoadingState title={selectedCity ? 'Carregando previsão…' : 'Buscando cidades…'} />
+          )}
+          {cities.length > 0 && (
+            <CityResults cities={cities} onSelect={handleSelect} disabled={status === 'loading'} />
+          )}
           {status === 'empty' && (
             <EmptyState
               title="Nenhum resultado encontrado"
@@ -81,11 +101,27 @@ export default function App() {
             />
           )}
           {status === 'error' && error !== null && (
-            <ErrorState message={error} onRetry={handleRetry} />
+            <ErrorState
+              message={`${selectedCity ? `${selectedCity.name}: ` : ''}${error}`}
+              onRetry={handleRetry}
+            />
           )}
           {status === 'success' && data !== null && (
             <>
-              <CurrentWeather city={data.city} current={data.current} unit={unit} />
+              <RefreshWeather
+                fetchedAt={data.fetchedAt}
+                timeZone={data.timeZone}
+                onRefresh={() => {
+                  resultsRef.current?.focus();
+                  void refresh();
+                }}
+              />
+              <CurrentWeather
+                city={data.city}
+                current={data.current}
+                unit={unit}
+                timeZone={data.timeZone}
+              />
               <ForecastList days={data.days} unit={unit} />
             </>
           )}

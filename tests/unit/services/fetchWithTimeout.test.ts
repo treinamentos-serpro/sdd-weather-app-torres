@@ -25,8 +25,10 @@ describe('fetchWithTimeout', () => {
     const clear = vi.spyOn(globalThis, 'clearTimeout');
     const assertion = expect(fetchWithTimeout('/test')).rejects.toMatchObject({
       code: 'timeout',
-      message: 'A requisição demorou demais.',
-      messagePtBr: 'A requisição demorou demais.',
+      message:
+        'A consulta excedeu o tempo limite de 10 segundos. Verifique sua conexão e tente novamente.',
+      messagePtBr:
+        'A consulta excedeu o tempo limite de 10 segundos. Verifique sua conexão e tente novamente.',
     });
     await vi.advanceTimersByTimeAsync(9999);
     expect(requestSignal?.aborted).toBe(false);
@@ -38,8 +40,18 @@ describe('fetchWithTimeout', () => {
   });
 
   it.each([
-    ['abort', new DOMException('Aborted', 'AbortError'), 'timeout', 'A requisição demorou demais.'],
-    ['network', new TypeError('Offline'), 'network', 'Falha de rede.'],
+    [
+      'abort',
+      new DOMException('Aborted', 'AbortError'),
+      'timeout',
+      'A consulta excedeu o tempo limite de 10 segundos. Verifique sua conexão e tente novamente.',
+    ],
+    [
+      'network',
+      new TypeError('Offline'),
+      'network',
+      'Não foi possível conectar ao serviço meteorológico. Verifique sua conexão e tente novamente.',
+    ],
   ])('normaliza %s preservando causa e limpando timer', async (_label, cause, code, message) => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(cause));
     const error = await fetchWithTimeout('/test').catch((value: unknown) => value);
@@ -90,7 +102,8 @@ describe('fetchWithTimeout', () => {
     );
     const assertion = expect(fetchWithTimeout('/test')).rejects.toMatchObject({
       code: 'timeout',
-      message: 'A requisição demorou demais.',
+      message:
+        'A consulta excedeu o tempo limite de 10 segundos. Verifique sua conexão e tente novamente.',
     });
     await vi.advanceTimersByTimeAsync(10_000);
     await assertion;

@@ -240,6 +240,7 @@ As tarefas estão agrupadas na sequência de implementação — contratos → f
   - Vitest cobre as funções puras nos dois sentidos: Celsius → Fahrenheit e Fahrenheit → Celsius, com valores positivos e negativos.
   - As asserções confirmam `20 °C` → `68,0 °F`, `-40 °C` → `-40,0 °F`, `68 °F` → `20,0 °C` e `12,34 °C` → `54,2 °F`.
   - Testes confirmam uma casa decimal, símbolo/unidade correspondentes e que `null` permanece indisponível, não zero.
+  - Cobertura adicional em `tests/unit/temperature.test.ts` verifica 0 °C → 32 °F, 100 °C → 212 °F, -40 °C → -40 °F e `unitLabel` para Celsius e Fahrenheit.
   - A suíte não usa DOM, rede ou mocks de `fetch`.
 - **Dependências:** T-03.
 - **Arquivos prováveis:** `tests/unit/lib/temperature.test.ts`.
@@ -507,6 +508,77 @@ As tarefas estão agrupadas na sequência de implementação — contratos → f
 | **RF-05 — Atualizar dados** | T-06, T-07, T-11, T-18, T-22, T-23, T-24 | Consulta ao selecionar cidade, atualização manual, atualização do horário de sucesso, falhas/retentativa e ausência de atualização automática, cobertas no service, hook, integração e E2E. |
 
 **Lacunas de cobertura funcional:** nenhum dos requisitos RF-01 a RF-05 está sem tarefa correspondente no backlog. Os requisitos não funcionais são rastreados separadamente nas tarefas e nos campos de rastreabilidade individuais.
+
+### Cobertura automatizada do estado atual
+
+- [Testes WMO](../tests/unit/lib/weatherCodes.test.ts): códigos conhecidos com descrição/ícone exatos e fallback desconhecido.
+- [Testes de datas](../tests/unit/lib/format.test.ts): contrato atual de `formatDay(date)` em pt-BR, ano bissexto, virada de ano e rejeição de datas inválidas. O módulo atual não oferece índice relativo nem `getShortDate`.
+- [Geocoding](../tests/unit/services/weatherService.test.ts) e [forecast](../tests/unit/services/getWeather.test.ts): `fetch` substituído por `vi.stubGlobal`, input vazio sem rede, mapeamento, ausência de resultados, HTTP/rede/timeout, cinco dias, campos nulos e respostas incompatíveis. Precipitação nula permanece indisponível, nunca é presumida como zero.
+- [Conversão integrada](../tests/unit/components/TemperatureConversion.test.tsx): `UnitToggle` e `CurrentWeather` convertem 0 °C em 32 °F por interação, retornam a Celsius sem erro acumulado e preservam campos ausentes e outras grandezas. [SearchBar](../tests/unit/components/SearchBar.test.tsx) já cobre vazio/espaços, callback com trim, botão e teclado.
+- [Hook](../tests/unit/hooks/useWeather.test.ts): inclui ausência de atualização automática após cinco minutos, além de concorrência, validação e retry já cobertos.
+- [E2E complementar](../tests/e2e/weather.spec.ts): rotas determinísticas, busca pelo botão, conversão, viewport 375×812, geocoding `{}` sem forecast, falha HTTP/estrutural com remoção de dados antigos e retry na unidade escolhida, campos parcialmente nulos.
+- [E2E de layout e acessibilidade](../tests/e2e/weather-app.spec.ts): medições de layout com `expect.poll` após carregamento das fontes, temperaturas delimitadas por região/card, foco por teclado, liberação garantida de resposta bloqueada e contraste medido nos estilos reais do botão normal/hover. O [Playwright](../playwright.config.ts) inicia servidor exclusivo com porta estrita, sem reaproveitar servidor existente.
+
+**Lacunas identificadas na validação anterior:** seleção explícita/homônimos, persistência da unidade, horário/frescor da observação, atualização manual e previsão parcial motivaram a correção funcional descrita abaixo. A matriz histórica registra o estado antes dessa correção, não o comportamento atual.
+
+### Verificação anterior dos gates e dos critérios de aceite — 2026-10-27
+
+| Comando | Resultado final |
+| --- | --- |
+| `pnpm lint` | Aprovado, sem erros. |
+| `pnpm build` | Aprovado, TypeScript e bundle de produção. |
+| `pnpm test` | Aprovado, 184 testes em 15 arquivos. |
+| `pnpm test:e2e` | Aprovado, 32 testes: 16 Chromium desktop e 16 WebKit com emulação de iPhone 13. |
+
+A primeira tentativa E2E foi bloqueada pela porta 5173 ocupada. O [servidor exclusivo do Playwright](../playwright.config.ts) passou a usar 5174, mantendo `--strictPort` e `reuseExistingServer: false`; o processo de desenvolvimento existente não foi interrompido. A execução seguinte identificou bibliotecas WebKit ausentes, instaladas com `pnpm exec playwright install-deps webkit`. O [README](../README.md) documenta a instalação com dependências de sistema. Foi incluído o viewport de 1024 px; a suíte agora verifica 320, 375, 768, 1024, 1440 e 1920 px nos dois projetos.
+
+**Registro histórico, anterior à correção funcional solicitada:** gates aprovados não equivaliam ao aceite integral. A matriz abaixo confronta o comportamento daquela revisão com os 30 critérios. Consulte a atualização funcional abaixo para o estado posterior.
+
+| Critérios | Situação | Evidência ou lacuna |
+| --- | --- | --- |
+| CA-01.1, CA-01.2, CA-01.3, CA-01.10 | Não atendidos na UI | O [hook](../src/hooks/useWeather.ts) escolhe `cities[0]`; o [App](../src/App.tsx) não oferece opções selecionáveis nem distingue homônimos. O limite/ordem de dez resultados é testado somente no serviço. |
+| CA-01.4 | Verificado | Trim e acentos preservados nos testes de [busca](../tests/unit/components/SearchBar.test.tsx) e [geocoding](../tests/unit/services/weatherService.test.ts). |
+| CA-01.5 | Parcial | O hook rejeita entradas curtas sem rede, mas a [SearchBar](../src/components/SearchBar.tsx) bloqueia vazio/espaços sem exibir a orientação exigida. |
+| CA-01.6, CA-01.7, CA-01.8 | Verificados no fluxo atual | Vazio sem forecast, erro recuperável/retry e loading cobertos por [App](../tests/unit/App.test.tsx), [serviço](../tests/unit/services/fetchWithTimeout.test.ts) e [E2E](../tests/e2e/weather-app.spec.ts). Timeout é comprovado no teste unitário; não há teste E2E de espera de 10 s. |
+| CA-01.9 | Parcial | O [teste do hook](../tests/unit/hooks/useWeather.test.ts) comprova que a resposta antiga é ignorada, mas a busca fica desabilitada durante loading e o cenário A/B não é exercitado pela UI. |
+| CA-01.11 | Verificado | O [hook](../tests/unit/hooks/useWeather.test.ts) rejeita mais de 100 caracteres antes da rede e o App apresenta a mensagem de erro. |
+| CA-02.1 | Parcial | [CurrentWeather](../src/components/CurrentWeather.tsx) apresenta as métricas, mas não renderiza `observedAt`. |
+| CA-02.2 | Parcial | Falhas HTTP/estruturais removem os valores e oferecem retry; porém `current: {}` é aceito pelo serviço como campos nulos e não oferece retry como consulta atual indisponível. |
+| CA-02.3, CA-02.4 | Verificados | Loading e campos opcionais ausentes/nulos cobertos por [App](../tests/unit/App.test.tsx), [painel](../tests/unit/components/CurrentWeather.test.tsx) e [mapeamento](../tests/unit/services/getWeather.test.ts). |
+| CA-02.5 | Não atendido | Não há classificação nem rótulo de observação com mais de duas horas em [CurrentWeather](../src/components/CurrentWeather.tsx). |
+| CA-03.1 | Parcialmente comprovado | Cinco datas consecutivas retornadas pela API são mapeadas e exibidas em ordem. A suíte usa datas fixas e não comprova D a D+4 relativos ao dia atual no fuso da cidade. |
+| CA-03.2, CA-03.4, CA-03.5 | Verificados no fluxo atual | Falhas estruturais/HTTP, loading e probabilidade ausente são cobertos pelo [serviço](../tests/unit/services/getWeather.test.ts), [painéis](../tests/unit/components/ForecastList.test.tsx) e [E2E](../tests/e2e/weather.spec.ts). |
+| CA-03.3 | Não atendido | O [serviço](../src/services/weatherService.ts) rejeita menos de cinco datas; [ForecastList](../src/components/ForecastList.tsx) informa quantidade faltante quando recebe lista parcial diretamente, mas não cria registros para as datas ausentes. |
+| CA-04.1, CA-04.2, CA-04.3, CA-04.4, CA-04.6 | Verificados | Celsius padrão, conversões a partir da fonte Celsius, arredondamento e alteração apenas das temperaturas cobertos por [funções](../tests/unit/lib/temperature.test.ts), [integração da conversão](../tests/unit/components/TemperatureConversion.test.tsx) e [E2E](../tests/e2e/weather.spec.ts). |
+| CA-04.5 | Não atendido | A unidade existe somente no `useState` do [App](../src/App.tsx), sem persistência entre visitas. |
+| CA-05.1 | Parcial | O hook consulta coordenadas da cidade recebida por `selectCity`, mas essa ação não está conectada a uma lista de seleção na UI. |
+| CA-05.2 | Não atendido | Não há ação “Atualizar” nem exibição de `fetchedAt` no [App](../src/App.tsx). Retry após erro não substitui atualização manual de dados carregados. |
+| CA-05.3 | Verificado | O [teste do hook](../tests/unit/hooks/useWeather.test.ts) avança cinco minutos e confirma ausência de consulta automática. |
+
+**Limites da validação dos RNFs:** RNF-02 tem os viewports mínimos cobertos. Os testes de teclado, foco e contraste não certificam WCAG 2.2 AA integralmente (RNF-03). Chromium e WebKit emulado não comprovam a matriz de duas versões estáveis de todos os navegadores/plataformas (RNF-04). O timeout está coberto, mas não o p95 sob rede de 100 ms/50 Mbps (RNF-05). Disponibilidade mensal e HTTPS de produção não são comprováveis por estes gates locais (RNF-06/RNF-08). Localização temporal, persistência e seleção explícita ainda limitam RNF-01, RNF-08 e RNF-09. Os testes E2E interceptam a API e não medem a disponibilidade real da Open-Meteo.
+
+### Correção das pendências funcionais — 2026-10-27
+
+Esta atualização substitui o diagnóstico funcional da matriz histórica anterior.
+Os critérios e requisitos da spec foram preservados, sem reduzir as exigências
+para acomodar o comportamento antigo.
+
+| Critérios antes pendentes/parciais | Correção e evidência |
+| --- | --- |
+| CA-01.1–CA-01.3, CA-01.10; CA-05.1 | [CityResults](../src/components/CityResults.tsx) lista até dez botões na ordem do provedor, mostra região/país e coordenadas para homônimos indistinguíveis. [useWeather](../src/hooks/useWeather.ts) aguarda seleção antes do forecast. Testes do [componente](../tests/unit/components/CityResults.test.tsx) e do [hook](../tests/unit/hooks/useWeather.test.ts) confirmam limite, ordem e a cidade passada à consulta. |
+| CA-01.5, CA-01.11 | [SearchBar](../src/components/SearchBar.tsx) compartilha `validateCityQuery` com o hook e informa vazio/espaços, menos de três e mais de 100 caracteres em alerta associado ao campo, sem rede. Botão habilitado no vazio permite acionar a validação. |
+| CA-01.9 | A busca permanece habilitada durante loading; uma nova busca invalida a anterior. [App.test.tsx](../tests/unit/App.test.tsx) e o teste do hook confirmam que a resposta antiga não sobrescreve os resultados recentes. |
+| CA-02.1, CA-02.5 | [CurrentWeather](../src/components/CurrentWeather.tsx) mostra o horário da observação no fuso da cidade e “Desatualizado” somente após duas horas. Um timeout atualiza o rótulo sem polling de rede. [Testes do painel](../tests/unit/components/CurrentWeather.test.tsx) verificam a fronteira exata de duas horas e o cleanup do timer. |
+| CA-02.2 | [weatherService](../src/services/weatherService.ts) rejeita `current: {}` ou sem nenhum valor meteorológico, mesmo com timestamp presente, acionando alerta e retry da cidade selecionada. Campos parcialmente ausentes continuam nulos e zeros são válidos. |
+| CA-03.1, CA-03.3 | O serviço calcula D no fuso retornado e produz D..D+4. Datas faltantes viram registros com campos nulos e [ForecastList](../src/components/ForecastList.tsx) informa cobertura incompleta, sem inventar zeros. Testes do serviço fixam o relógio e incluem lacunas, UTC positivo/negativo e arrays inválidos. |
+| CA-04.5 | [useTemperatureUnit](../src/hooks/useTemperatureUnit.ts) persiste somente a unidade; restaura Fahrenheit, usa Celsius sem preferência ou com conteúdo inválido e informa falhas de leitura/escrita sem impedir o uso na sessão. [Testes](../tests/unit/hooks/useTemperatureUnit.test.ts) verificam os quatro casos. |
+| CA-05.2 | [RefreshWeather](../src/components/RefreshWeather.tsx) apresenta o horário da última consulta bem-sucedida e “Atualizar”. O hook refaz somente forecast para as coordenadas selecionadas; sucesso substitui `fetchedAt`, falha preserva o relatório anterior em memória sem exibi-lo como atual, e retry repete a atualização. |
+
+As mudanças não adicionam atualização automática nem persistência de cidades.
+A indicação de loading diferencia busca de cidades e consulta da previsão.
+Foco, `aria-busy`, teclado e estados de erro são mantidos no fluxo explícito.
+As limitações de comprovação dos RNFs de produção e da matriz completa de
+navegadores permanecem independentes destas correções funcionais.
 
 ## Sequência sugerida em fatias verticais
 

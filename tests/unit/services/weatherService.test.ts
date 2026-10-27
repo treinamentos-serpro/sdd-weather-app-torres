@@ -128,7 +128,8 @@ describe('searchCities', () => {
     );
     const assertion = expect(searchCities('Recife')).rejects.toMatchObject({
       code: 'timeout',
-      message: 'A requisição demorou demais.',
+      message:
+        'A consulta excedeu o tempo limite de 10 segundos. Verifique sua conexão e tente novamente.',
     });
     await vi.advanceTimersByTimeAsync(10_000);
     await assertion;

@@ -1,4 +1,5 @@
-import { useId } from 'react';
+import { useEffect, useId, useState } from 'react';
+import { formatOptionalMetric } from '../lib/format';
 import { formatTemperature } from '../lib/temperature';
 import { getWeatherIcon } from '../lib/weatherCodes';
 import type { City, CurrentWeather as CurrentWeatherData, Unit } from '../types/weather';
@@ -7,22 +8,35 @@ interface CurrentWeatherProps {
   city: City;
   current: CurrentWeatherData;
   unit: Unit;
+  timeZone?: string;
 }
 
-function formatMetric(value: number | null, suffix: string): string {
-  return value === null
-    ? 'Indisponível'
-    : `${value.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ${suffix}`;
-}
-
-export default function CurrentWeather({ city, current, unit }: CurrentWeatherProps) {
+export default function CurrentWeather({
+  city,
+  current,
+  unit,
+  timeZone = 'UTC',
+}: CurrentWeatherProps) {
   const titleId = useId();
+  const [, updateFreshness] = useState(0);
+  useEffect(() => {
+    if (current.observedAt === null) return;
+    const remaining = Date.parse(current.observedAt) + 2 * 60 * 60_000 + 1 - Date.now();
+    if (remaining <= 0) return;
+    const timer = setTimeout(() => updateFreshness((value) => value + 1), remaining);
+    return () => clearTimeout(timer);
+  }, [current.observedAt]);
+  const stale =
+    current.observedAt !== null && Date.now() - Date.parse(current.observedAt) > 2 * 60 * 60_000;
   const location = [city.region, city.country].filter(Boolean).join(', ');
   const metrics = [
-    { label: 'Umidade', value: formatMetric(current.relativeHumidityPercent, '%') },
-    { label: 'Vento', value: formatMetric(current.windSpeedKmh, 'km/h') },
-    { label: 'Precipitação', value: formatMetric(current.precipitationMm, 'mm') },
-    { label: 'Pressão ao nível do mar', value: formatMetric(current.pressureMslHpa, 'hPa') },
+    { label: 'Umidade', value: formatOptionalMetric(current.relativeHumidityPercent, '%') },
+    { label: 'Vento', value: formatOptionalMetric(current.windSpeedKmh, 'km/h') },
+    { label: 'Precipitação', value: formatOptionalMetric(current.precipitationMm, 'mm') },
+    {
+      label: 'Pressão ao nível do mar',
+      value: formatOptionalMetric(current.pressureMslHpa, 'hPa'),
+    },
   ];
 
   return (
@@ -34,6 +48,21 @@ export default function CurrentWeather({ city, current, unit }: CurrentWeatherPr
         {city.name}
       </h2>
       {location && <p className="break-words text-sm text-slate-300">{location}</p>}
+      <p className="mt-2 text-sm text-slate-300">
+        Observação:{' '}
+        {current.observedAt ? (
+          <time dateTime={current.observedAt}>
+            {new Intl.DateTimeFormat('pt-BR', {
+              timeZone,
+              dateStyle: 'short',
+              timeStyle: 'short',
+            }).format(new Date(current.observedAt))}
+          </time>
+        ) : (
+          'Indisponível'
+        )}
+        {stale && <strong className="ml-2 text-sun">Desatualizado</strong>}
+      </p>
       <div className="mt-6 flex flex-wrap items-center gap-4">
         <span aria-hidden="true" className="text-6xl text-sun">
           {getWeatherIcon(current.condition?.code ?? null)}

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { validateCityQuery } from '../lib/search';
 import { getWeather, searchCities, WeatherServiceError } from '../services/weatherService';
 import type { City, WeatherData } from '../types/weather';
 
-type WeatherStatus = 'idle' | 'loading' | 'success' | 'error' | 'empty';
-type Operation = { type: 'search'; name: string } | { type: 'select'; city: City };
+type WeatherStatus = 'idle' | 'loading' | 'choosing' | 'success' | 'error' | 'empty';
+type Operation = { type: 'search'; name: string } | { type: 'select' | 'refresh'; city: City };
 
 interface WeatherState {
   status: WeatherStatus;
@@ -11,6 +12,7 @@ interface WeatherState {
   cities: City[];
   error: string | null;
   query: string;
+  selectedCity: City | null;
 }
 
 export default function useWeather() {
@@ -20,6 +22,7 @@ export default function useWeather() {
     cities: [],
     error: null,
     query: '',
+    selectedCity: null,
   });
   const requestId = useRef(0);
   const mounted = useRef(true);
@@ -39,13 +42,14 @@ export default function useWeather() {
     lastOperation.current = operation;
     const isCurrent = () => mounted.current && requestId.current === id;
 
-    if (operation.type === 'search' && (operation.name.length < 3 || operation.name.length > 100)) {
+    if (operation.type === 'search' && validateCityQuery(operation.name)) {
       setState({
         status: 'error',
         data: null,
         cities: [],
         error: 'A busca deve conter de 3 a 100 caracteres.',
         query: operation.name,
+        selectedCity: null,
       });
       return;
     }
@@ -53,28 +57,25 @@ export default function useWeather() {
     setState((previous) => ({
       ...previous,
       status: 'loading',
-      data: null,
+      data: operation.type === 'refresh' ? previous.data : null,
       error: null,
       cities: operation.type === 'search' ? [] : previous.cities,
       query: operation.type === 'search' ? operation.name : previous.query,
+      selectedCity: operation.type === 'search' ? null : operation.city,
     }));
 
     try {
-      let city: City;
       if (operation.type === 'search') {
         const cities = await searchCities(operation.name);
         if (!isCurrent()) return;
-        setState((previous) => ({ ...previous, cities }));
-        const firstCity = cities[0];
-        if (!firstCity) {
-          setState((previous) => ({ ...previous, status: 'empty' }));
-          return;
-        }
-        city = firstCity;
-      } else {
-        city = operation.city;
+        setState((previous) => ({
+          ...previous,
+          cities: cities.slice(0, 10),
+          status: cities.length === 0 ? 'empty' : 'choosing',
+        }));
+        return;
       }
-      const data = await getWeather(city);
+      const data = await getWeather(operation.city);
       if (!isCurrent()) return;
       setState((previous) => ({ ...previous, status: 'success', data }));
     } catch (cause) {
@@ -82,10 +83,13 @@ export default function useWeather() {
       const error =
         cause instanceof WeatherServiceError
           ? cause.messagePtBr
-          : cause instanceof Error
-            ? cause.message
-            : 'Não foi possível consultar o clima.';
-      setState((previous) => ({ ...previous, status: 'error', data: null, error }));
+          : 'Ocorreu um erro inesperado ao consultar o clima. Tente novamente.';
+      setState((previous) => ({
+        ...previous,
+        status: 'error',
+        data: operation.type === 'refresh' ? previous.data : null,
+        error,
+      }));
     }
   }, []);
 
@@ -97,6 +101,9 @@ export default function useWeather() {
   const retry = useCallback(async () => {
     if (lastOperation.current) await execute(lastOperation.current);
   }, [execute]);
+  const refresh = useCallback(async () => {
+    if (state.selectedCity) await execute({ type: 'refresh', city: state.selectedCity });
+  }, [execute, state.selectedCity]);
 
-  return { ...state, search, selectCity, retry };
+  return { ...state, search, selectCity, retry, refresh };
 }

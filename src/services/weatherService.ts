@@ -1,6 +1,7 @@
 import { getWeatherCondition } from '../lib/weatherCodes';
 import type {
   City,
+  CurrentWeather,
   ForecastDay,
   RequestError,
   RequestErrorCode,
@@ -93,7 +94,7 @@ export async function fetchWithTimeout(url: string): Promise<unknown> {
         isRecord(cause) && cause.name === 'SyntaxError' ? 'invalid-response' : 'network',
         isRecord(cause) && cause.name === 'SyntaxError'
           ? 'O serviço retornou uma resposta inválida.'
-          : 'Falha de rede.',
+          : 'Não foi possível conectar ao serviço meteorológico. Verifique sua conexão e tente novamente.',
         { cause },
       );
     }
@@ -102,7 +103,9 @@ export async function fetchWithTimeout(url: string): Promise<unknown> {
     const aborted = controller.signal.aborted || (isRecord(cause) && cause.name === 'AbortError');
     throw new WeatherServiceError(
       aborted ? 'timeout' : 'network',
-      aborted ? 'A requisição demorou demais.' : 'Falha de rede.',
+      aborted
+        ? 'A consulta excedeu o tempo limite de 10 segundos. Verifique sua conexão e tente novamente.'
+        : 'Não foi possível conectar ao serviço meteorológico. Verifique sua conexão e tente novamente.',
       { cause },
     );
   } finally {
@@ -198,8 +201,18 @@ export async function getWeather(city: City): Promise<WeatherData> {
     payload.timezone.length === 0
   )
     throw invalidResponse();
+  const now = new Date();
+  let today: string;
   try {
-    new Intl.DateTimeFormat('pt-BR', { timeZone: payload.timezone });
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: payload.timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(now);
+    const part = (type: Intl.DateTimeFormatPartTypes) =>
+      parts.find((value) => value.type === type)?.value;
+    today = localDate(`${part('year')}-${part('month')}-${part('day')}`);
   } catch (cause) {
     throw new WeatherServiceError(
       'invalid-response',
@@ -225,11 +238,15 @@ export async function getWeather(city: City): Promise<WeatherData> {
     temperature_2m_min: '°C',
     precipitation_probability_max: '%',
   });
-  if (!Array.isArray(daily.time) || daily.time.length < 5) throw invalidResponse();
+  if (!Array.isArray(daily.time) || daily.time.length === 0 || daily.time.length > 5)
+    throw invalidResponse();
+  const expectedDates = Array.from({ length: 5 }, (_, index) =>
+    new Date(Date.parse(`${today}T00:00:00Z`) + index * 86400000).toISOString().slice(0, 10),
+  );
   const dates = daily.time.map(localDate);
+  if (dates.some((date) => !expectedDates.includes(date))) throw invalidResponse();
   for (let index = 1; index < dates.length; index++) {
-    if (Date.parse(dates[index]) - Date.parse(dates[index - 1]) !== 86400000)
-      throw invalidResponse();
+    if (dates[index] <= dates[index - 1]) throw invalidResponse();
   }
   for (const key of [
     'weather_code',
@@ -249,29 +266,47 @@ export async function getWeather(city: City): Promise<WeatherData> {
     const series = daily[key];
     return Array.isArray(series) ? series[index] : null;
   }
-  const days: ForecastDay[] = dates.slice(0, 5).map((date, index) => ({
-    date,
-    condition: condition(dailyValue('weather_code', index)),
-    temperatureMinC: optionalNumber(dailyValue('temperature_2m_min', index)),
-    temperatureMaxC: optionalNumber(dailyValue('temperature_2m_max', index)),
-    precipitationProbabilityMaxPercent: optionalNumber(
-      dailyValue('precipitation_probability_max', index),
-    ),
-  }));
+  const days: ForecastDay[] = expectedDates.map((date) => {
+    const index = dates.indexOf(date);
+    return {
+      date,
+      condition: condition(dailyValue('weather_code', index)),
+      temperatureMinC: optionalNumber(dailyValue('temperature_2m_min', index)),
+      temperatureMaxC: optionalNumber(dailyValue('temperature_2m_max', index)),
+      precipitationProbabilityMaxPercent: optionalNumber(
+        dailyValue('precipitation_probability_max', index),
+      ),
+    };
+  });
+  if (
+    !days.some(
+      (day) =>
+        day.condition !== null ||
+        day.temperatureMinC !== null ||
+        day.temperatureMaxC !== null ||
+        day.precipitationProbabilityMaxPercent !== null,
+    )
+  )
+    throw invalidResponse();
+  const currentWeather: CurrentWeather = {
+    temperatureC: optionalNumber(current.temperature_2m),
+    apparentTemperatureC: optionalNumber(current.apparent_temperature),
+    condition: condition(current.weather_code),
+    relativeHumidityPercent: optionalNumber(current.relative_humidity_2m),
+    windSpeedKmh: optionalNumber(current.wind_speed_10m),
+    precipitationMm: optionalNumber(current.precipitation),
+    pressureMslHpa: optionalNumber(current.pressure_msl),
+    observedAt: observedAt(current.time, payload.utc_offset_seconds),
+  };
+  if (
+    !Object.entries(currentWeather).some(([key, value]) => key !== 'observedAt' && value !== null)
+  )
+    throw invalidResponse();
   return {
     city,
     timeZone: payload.timezone,
-    fetchedAt: new Date().toISOString(),
-    current: {
-      temperatureC: optionalNumber(current.temperature_2m),
-      apparentTemperatureC: optionalNumber(current.apparent_temperature),
-      condition: condition(current.weather_code),
-      relativeHumidityPercent: optionalNumber(current.relative_humidity_2m),
-      windSpeedKmh: optionalNumber(current.wind_speed_10m),
-      precipitationMm: optionalNumber(current.precipitation),
-      pressureMslHpa: optionalNumber(current.pressure_msl),
-      observedAt: observedAt(current.time, payload.utc_offset_seconds),
-    },
+    fetchedAt: now.toISOString(),
+    current: currentWeather,
     days,
   };
 }

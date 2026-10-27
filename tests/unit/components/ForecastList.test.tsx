@@ -48,4 +48,22 @@ describe('ForecastList e ForecastCard', () => {
     expect(screen.getAllByText('Indisponível')).toHaveLength(4);
     expect(screen.getByText('—')).toHaveAttribute('aria-hidden', 'true');
   });
+
+  it('não exibe valores não finitos nos campos da previsão', () => {
+    render(
+      <ForecastCard
+        day={{
+          date: '2026-10-27',
+          condition: null,
+          temperatureMaxC: Number.NaN,
+          temperatureMinC: Number.POSITIVE_INFINITY,
+          precipitationProbabilityMaxPercent: Number.NaN,
+        }}
+        unit="celsius"
+      />,
+    );
+
+    expect(screen.getAllByText('Indisponível')).toHaveLength(4);
+    expect(screen.queryByText(/NaN|undefined/)).not.toBeInTheDocument();
+  });
 });

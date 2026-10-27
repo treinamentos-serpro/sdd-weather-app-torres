@@ -1,4 +1,4 @@
-import { formatDay } from '../lib/format';
+import { formatDay, formatOptionalMetric } from '../lib/format';
 import { formatTemperature } from '../lib/temperature';
 import { getWeatherIcon } from '../lib/weatherCodes';
 import type { ForecastDay, Unit } from '../types/weather';
@@ -35,9 +35,7 @@ export default function ForecastCard({ day, unit }: ForecastCardProps) {
         <div>
           <dt className="text-slate-300">Probabilidade de chuva</dt>
           <dd>
-            {day.precipitationProbabilityMaxPercent === null
-              ? 'Indisponível'
-              : `${day.precipitationProbabilityMaxPercent.toLocaleString('pt-BR')} %`}
+            {formatOptionalMetric(day.precipitationProbabilityMaxPercent, '%', 0)}
           </dd>
         </div>
       </dl>

@@ -3,6 +3,15 @@ import { getWeatherCondition, getWeatherIcon } from '../../../src/lib/weatherCod
 
 describe('weatherCodes', () => {
   it.each([
+    [0, 'Céu limpo', '☀️'],
+    [61, 'Chuva fraca', '🌧️'],
+    [95, 'Trovoadas', '⛈️'],
+  ] as const)('retorna a descrição e o ícone corretos para %s', (code, labelPtBr, icon) => {
+    expect(getWeatherCondition(code)).toEqual({ code, labelPtBr });
+    expect(getWeatherIcon(code)).toBe(icon);
+  });
+
+  it.each([
     0, 1, 2, 3, 45, 48, 51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 71, 73, 75, 77, 80, 81, 82, 85, 86,
     95, 96, 99,
   ])('mapeia o código WMO %s para condição e ícone', (code) => {
