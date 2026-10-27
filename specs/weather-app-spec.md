@@ -9,7 +9,7 @@ Open-Meteo é a fonte de geocoding e meteorologia; o produto não exige conta. E
 ## Functional Requirements
 
 - **RF-01 — Buscar e selecionar cidades:** aceitar nome de cidade, com região e país opcionais para refinar a busca. Após remover espaços externos, exigir ao menos três caracteres e aceitar até 100 caracteres. Exibir no máximo dez resultados, na ordem do provedor. Cada resultado deve mostrar cidade, região e país quando disponíveis; coordenadas identificam resultados que continuem ambíguos. Selecionar um resultado define a localidade consultada.
-- **RF-02 — Consultar clima atual:** para a localidade selecionada, apresentar temperatura, condição em texto pt-BR, sensação térmica, umidade relativa em %, velocidade do vento em km/h e horário da observação informado pela fonte. Indicar claramente qualquer campo ausente; observações com mais de duas horas devem ser identificadas como desatualizadas.
+- **RF-02 — Consultar clima atual:** para a localidade selecionada, apresentar temperatura, condição em texto pt-BR, sensação térmica, umidade relativa em %, velocidade do vento em km/h, precipitação atual em mm, pressão ao nível do mar em hPa e horário da observação informado pela fonte. A precipitação atual é o volume retornado em `current.precipitation`, não a probabilidade diária. Indicar claramente qualquer campo ausente; observações com mais de duas horas devem ser identificadas como desatualizadas.
 - **RF-03 — Consultar previsão de cinco dias:** apresentar uma previsão diária para hoje e os quatro dias seguintes no fuso horário da cidade selecionada. Cada dia contém condição em texto pt-BR, temperaturas mínima e máxima e probabilidade máxima de precipitação em %, quando fornecida pela fonte; campos ausentes são identificados.
 - **RF-04 — Alternar unidade de temperatura:** oferecer Celsius e Fahrenheit, com Celsius inicial. A escolha persiste localmente entre visitas no mesmo navegador. Converter todos os valores de temperatura visíveis, arredondados a uma casa decimal, e exibir °C ou °F; não converter outras grandezas.
 - **RF-05 — Atualizar dados:** buscar dados ao selecionar uma cidade e oferecer atualização manual. Mostrar o horário da última consulta bem-sucedida. Não atualizar automaticamente.
@@ -81,7 +81,7 @@ Os critérios estão agrupados por requisito para tornar rastreável a cobertura
 - **CA-02.1 — Exibir clima da cidade selecionada**
 	- **Given:** uma localidade está selecionada e a consulta retorna os campos atuais previstos em RF-02.
 	- **When:** a seção de clima atual é exibida.
-	- **Then:** cidade, região/país, temperatura com unidade, condição em pt-BR, sensação térmica, umidade em %, velocidade do vento em km/h e horário da observação são apresentados, sem dados de outra localidade.
+	- **Then:** cidade, região/país, temperatura com unidade, condição em pt-BR, sensação térmica, umidade em %, velocidade do vento em km/h, precipitação em mm, pressão ao nível do mar em hPa e horário da observação são apresentados, sem dados de outra localidade.
 - **CA-02.2 — Não apresentar consulta atual indisponível como válida**
 	- **Given:** uma cidade está selecionada e a consulta do clima atual falha ou não retorna dados.
 	- **When:** a seção de clima atual é exibida.

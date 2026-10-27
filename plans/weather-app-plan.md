@@ -54,7 +54,7 @@ src/
   lib/
     searchQuery.ts
     temperature.ts
-    weatherCode.ts
+    weatherCodes.ts
     dateTime.ts
   types/
     weather.ts
@@ -63,7 +63,7 @@ tests/
     services/openMeteoClient.test.ts
     lib/searchQuery.test.ts
     lib/temperature.test.ts
-    lib/weatherCode.test.ts
+    lib/weatherCodes.test.ts
     lib/dateTime.test.ts
     hooks/useWeatherApp.test.ts
   components/
@@ -76,6 +76,8 @@ tests/
 ### Responsabilidades e dependências entre camadas
 
 - **`components/` — apresentação:** componentes React recebem dados, estados e callbacks por props e cuidam de renderização, interação e acessibilidade. Não fazem `fetch`, não conhecem o formato bruto da Open-Meteo e não mantêm cópias paralelas do estado da aplicação.
+- **Busca reutilizável:** `SearchBar.tsx` implementa o formulário acessível da busca com `onSearch(city: string)` e `disabled?: boolean`. Mantém apenas o texto digitado, aplica `trim` e bloqueia envios vazios/desabilitados. A validação de 3–100 caracteres permanece na orquestração prevista em T-02/T-07; resultados e estados de requisição pertencem à composição de T-08.
+- **Controle de unidade:** `UnitToggle.tsx` fornece a apresentação prevista em T-10 com `unit: Unit` e `onChange(unit: Unit)`. Os botões °C/°F expõem `aria-pressed` dentro de um grupo nomeado, com navegação nativa por Tab/Shift+Tab e ativação por Enter/Espaço. O componente é controlado; conversão e persistência continuam na orquestração.
 - **`hooks/` — orquestração e estado:** `useWeatherApp` coordena busca, seleção, consulta, atualização manual, concorrência, loading/erro/vazio e preferência de unidade. Chama contratos do serviço e entrega estado/ações prontos à tela; mantém a política de estado fora dos componentes.
 - **`services/` — acesso a dados:** `openMeteoClient` constrói URLs e parâmetros, executa `fetch` com timeout/cancelamento, valida o payload externo e converte-o para os tipos internos. Não contém estado React nem lógica de apresentação.
 - **`lib/` — funções puras reutilizáveis:** validação da consulta, conversão/formatação de temperatura, mapeamento de códigos WMO e operações de data/hora sem I/O ou dependência de React. Entradas e saídas explícitas tornam as regras previsíveis.
@@ -120,6 +122,8 @@ export interface CurrentWeather {
   condition: WeatherCondition | null;
   relativeHumidityPercent: number | null;
   windSpeedKmh: number | null;
+  precipitationMm: number | null;
+  pressureMslHpa: number | null;
   observedAt: string | null; // instante ISO-8601 normalizado pelo serviço
 }
 
@@ -156,7 +160,11 @@ export interface OpenMeteoClient {
 }
 ```
 
-`City.id` é identificador estável no cliente, derivado do ID do provedor quando disponível ou das coordenadas. `null` representa campo ausente; zero é um valor válido e não deve ser usado como fallback. Temperaturas são mantidas em Celsius no modelo interno; conversão e arredondamento a uma casa decimal ocorrem na apresentação. `weatherCode.ts` mapeia códigos WMO para rótulos pt-BR e fornece fallback para códigos desconhecidos.
+`City.id` é identificador estável no cliente, derivado do ID do provedor quando disponível ou das coordenadas. `null` representa campo ausente; zero é um valor válido e não deve ser usado como fallback. Temperaturas são mantidas em Celsius no modelo interno; conversão e arredondamento a uma casa decimal ocorrem na apresentação. `weatherCodes.ts` mapeia códigos WMO para rótulos pt-BR e ícones, com fallback neutro para códigos desconhecidos.
+
+O hero `CurrentWeather.tsx` recebe `city`, `current` e `unit`, usa `lib/temperature.ts` e `lib/weatherCodes.ts` e apresenta condição, sensação térmica, umidade, vento, precipitação em mm e pressão ao nível do mar em hPa. Campos nulos aparecem como “Indisponível”. Não consulta rede nem relógio; estados de requisição e indicação temporal continuam sob responsabilidade da composição/orquestração.
+
+Para uso na UI, `src/types/weather.ts` também exporta os aliases `Unit = TemperatureUnit`, `ForecastDay = DailyForecast` e `WeatherData = WeatherReport`, sem duplicar os contratos. O objeto `mockWeatherData`, em `src/mocks/weatherData.ts`, fornece dados fictícios de São Paulo e cinco dias consecutivos para desenvolvimento sem API. Suas datas são fixas, não representam dados atuais e podem acionar a futura indicação de observação desatualizada; o mock não é conectado automaticamente à aplicação.
 
 ## Data Flow
 
@@ -198,6 +206,8 @@ Sem API key, autenticação ou backend intermediário. Respeitar termos e limite
 
 **Geocoding**
 
+A implementação incremental está em `src/services/weatherService.ts`: `searchCities(name: string): Promise<City[]>` aplica `trim`, retorna `[]` sem rede para nome vazio e usa `encodeURIComponent` no nome. Exporta `WeatherServiceError`, compatível com `RequestError`, preservando causa e status HTTP quando aplicáveis. Valida o payload antes de mapear, limita a dez cidades e usa timeout de 10 s. O App a consome via `useWeather`; o adaptador `OpenMeteoClient` com cancelamento externo permanece em T-06.
+
 - Endpoint: `GET https://geocoding-api.open-meteo.com/v1/search`
 - Parâmetros: `name` (texto já validado), `count=10`, `language=pt`, `format=json`.
 - Exemplo de URL: `https://geocoding-api.open-meteo.com/v1/search?name=S%C3%A3o%20Paulo&count=10&language=pt&format=json`.
@@ -224,8 +234,8 @@ Sem API key, autenticação ou backend intermediário. Respeitar termos e limite
 **Forecast atual e diário**
 
 - Endpoint: `GET https://api.open-meteo.com/v1/forecast`
-- Parâmetros: `latitude` e `longitude` da cidade selecionada; `current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m`; `daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max`; `temperature_unit=celsius`; `wind_speed_unit=kmh`; `timezone=auto`; `forecast_days=5`.
-- Exemplo de URL: `https://api.open-meteo.com/v1/forecast?latitude=52.52&longitude=13.419&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&temperature_unit=celsius&wind_speed_unit=kmh&timezone=auto&forecast_days=5`.
+- Parâmetros: `latitude` e `longitude` da cidade selecionada; `current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,precipitation,pressure_msl`; `daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max`; `temperature_unit=celsius`; `wind_speed_unit=kmh`; `precipitation_unit=mm`; `timezone=auto`; `forecast_days=5`.
+- Exemplo de URL: `https://api.open-meteo.com/v1/forecast?latitude=52.52&longitude=13.419&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,precipitation,pressure_msl&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&temperature_unit=celsius&wind_speed_unit=kmh&precipitation_unit=mm&timezone=auto&forecast_days=5`.
 - `current` pede os valores meteorológicos da observação atual. `daily` pede séries diárias; cada posição de `daily.time` corresponde à mesma posição nos demais arrays. `timezone=auto` faz o provedor determinar o fuso pelas coordenadas e devolver as datas/horas locais; cinco dias atendem a previsão de hoje e dos quatro dias seguintes.
 - Exemplo resumido de resposta (valores e unidades ilustrativos):
 
@@ -241,7 +251,9 @@ Sem API key, autenticação ou backend intermediário. Respeitar termos e limite
     "relative_humidity_2m": "%",
     "apparent_temperature": "°C",
     "weather_code": "wmo code",
-    "wind_speed_10m": "km/h"
+    "wind_speed_10m": "km/h",
+    "precipitation": "mm",
+    "pressure_msl": "hPa"
   },
   "current": {
     "time": "2026-06-15T12:15",
@@ -249,7 +261,9 @@ Sem API key, autenticação ou backend intermediário. Respeitar termos e limite
     "relative_humidity_2m": 58,
     "apparent_temperature": 21.0,
     "weather_code": 2,
-    "wind_speed_10m": 12.3
+    "wind_speed_10m": 12.3,
+    "precipitation": 0.0,
+    "pressure_msl": 1015.2
   },
   "daily_units": {
     "time": "iso8601",
@@ -270,11 +284,30 @@ Sem API key, autenticação ou backend intermediário. Respeitar termos e limite
 
 - Mapear `timezone` para `WeatherReport.timeZone` e a cidade selecionada para `WeatherReport.city`; gerar `fetchedAt` como instante ISO-8601 no cliente quando a resposta válida for recebida. Mapear `current.temperature_2m`, `apparent_temperature`, `relative_humidity_2m` e `wind_speed_10m` para os campos correspondentes de `CurrentWeather` em Celsius, percentual e km/h. `current.weather_code` alimenta `condition.code`; obter `condition.labelPtBr` pelo mapeamento WMO. Converter `current.time` de horário local em instante ISO-8601 para `observedAt`, usando o fuso/offset retornado (`timezone` e `utc_offset_seconds`).
 - Para cada índice de `daily.time`, criar um `DailyForecast`: `time` → `date` (`YYYY-MM-DD` local), `weather_code` → `condition` (mesmo mapeamento WMO), `temperature_2m_min` → `temperatureMinC`, `temperature_2m_max` → `temperatureMaxC` e `precipitation_probability_max` → `precipitationProbabilityMaxPercent`. Descartar elementos depois dos cinco dias previstos.
+- Mapear `current.precipitation` → `precipitationMm` em mm e `current.pressure_msl` → `pressureMslHpa` em hPa, conferindo `current_units`; ausência ou `null` vira `null`, preservando zero.
 - Validar os arrays e seus valores antes de normalizar. A ausência de um campo meteorológico opcional, incluindo probabilidade de precipitação, vira `null`, nunca zero; aplicar às temperaturas internas as unidades explicitamente solicitadas e conferidas em `current_units`/`daily_units`. As datas de `daily.time` permanecem datas locais, não timestamps UTC. Resposta estruturalmente malformada é `invalid-response`.
 
 Cada request tem timeout de 10 s e suporta `AbortSignal`. O formato e as unidades retornados devem ser validados; não confiar em rótulos/unidades implícitos. Se a API alterar seu contrato, os testes do adaptador devem falhar sem propagar resposta incompatível à UI.
 
+O helper exportado `fetchWithTimeout(url)` em `weatherService.ts` retorna JSON como `unknown`, usando `AbortController` com timer de 10 s que abrange fetch e leitura do corpo. Executa `clearTimeout` no `finally` em todos os caminhos. AbortError/timeout gera `WeatherServiceError` com código `timeout` e mensagem “A requisição demorou demais.”; falha de rede gera código `network` e “Falha de rede.”. Erros HTTP e JSON malformado preservam seus códigos específicos.
+
+Na implementação incremental de `weatherService.ts`, `getWeather(city): Promise<WeatherData>` reutiliza o transporte de geocoding e exige os objetos `current` e `daily`, unidades coerentes e pelo menos cinco datas consecutivas. Arrays presentes devem estar alinhados a `daily.time`; séries meteorológicas ausentes tornam-se campos `null`. São retornados exatamente os cinco primeiros dias, conforme o contrato desta etapa; menos de cinco datas rejeita `WeatherServiceError` (`invalid-response`), em vez de inventar previsões. A aceitação de cobertura parcial prevista para a integração futura permanece pendente. `observedAt` usa `utc_offset_seconds` para normalizar a hora local; `fetchedAt` é gerado após validação. A UI consome os dados via `useWeather`.
+
 ## State Management
+
+### Hook incremental `useWeather`
+
+`src/hooks/useWeather.ts` expõe `status` (`idle/loading/success/error/empty`), `data: WeatherData | null`, `cities: City[]`, `error: string | null`, `query` e ações assíncronas `search`, `selectCity`, `retry`. A busca aplica trim, valida 3–100 caracteres sem rede em caso inválido, busca localidades e carrega automaticamente a primeira, conforme solicitado nesta etapa. Lista vazia encerra em `empty` sem forecast. Seleção explícita preserva lista/consulta e carrega a cidade recebida. Toda nova operação limpa dados e erro anteriores.
+
+Neste contrato simplificado, retry repete a última ação pública completa: busca (geocoding + primeiro forecast) ou seleção (somente forecast); antes de qualquer ação é no-op. IDs de operação ignoram sucessos/erros obsoletos e impedem atualização após desmontagem, sem cancelar a rede (o timeout do serviço permanece ativo). Essas decisões diferem do hook final T-07, que terá estados separados, seleção antes do forecast e retry granular; persistência de unidade e refresh não são implementados aqui. O App já usa o hook; a lista de seleção explícita continua pendente.
+
+### Integração incremental da UI
+
+A navegação por teclado inclui link “Pular para o conteúdo”. Busca e retry transferem o foco para uma região de resultados estável antes de desabilitar/remover o controle acionado, sem roubar foco novamente no fim da espera. Estados vazio/inicial e sucesso são anunciados por uma live region persistente; loading e erro mantêm `status`/`alert`. Cards têm nomes acessíveis por data. A borda do input usa `slate-400` para delimitação contrastante; consultas longas quebram linha sem ampliar a viewport.
+
+`App.tsx` consome `useWeather` e inicia em `idle`, sem chamadas automáticas. SearchBar chama `search`; ErrorState chama `retry`, preservando a transferência de foco antes da ação. Os estados `idle/loading/empty/error/success` vêm exclusivamente do hook; os painéis só são renderizados em sucesso com `data`. Foram removidos mock, controles de demonstração e timer artificial do App. `unit` continua como estado local da UI, sem persistência nesta etapa, e é passado aos painéis para conversão na renderização, sem novas consultas. Os testes usam serviços mockados e rotas interceptadas, nunca a API real.
+
+`ForecastCard.tsx` usa `lib/format.ts` para rótulos pt-BR de datas locais, sem depender do fuso do navegador, e os helpers existentes de temperatura/ícone. `ForecastList.tsx` ordena uma cópia dos dias, limita a cinco e usa `grid-cols-2 sm:grid-cols-3 lg:grid-cols-5`; lista vazia e cobertura parcial são sinalizadas. Os componentes reutilizáveis de estado ficam em `components/states/`: loading com status, erro com mensagem e retry, vazio com título e dica. A integração real, datas ausentes individualizadas e frescor da observação permanecem no backlog.
 
 Estado local em `useWeatherApp`, com `useReducer` para transições relacionadas:
 
